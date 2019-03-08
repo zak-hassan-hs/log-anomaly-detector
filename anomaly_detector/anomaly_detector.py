@@ -11,6 +11,7 @@ from .model.som_model import SOMModel
 from .model.sompy_model import SOMPYModel
 from .model.model_exception import ModelLoadException, ModelSaveException
 from .model.w2v_model import W2VModel
+from .observers import AnomalyFact, AnomalyFactChecker
 
 import os
 import numpy as np
@@ -30,6 +31,8 @@ TRAINING_TIME = Gauge("training_time", "Time to train for last training")
 INFERENCE_COUNT = Counter("inference_count", "Number of inference runs")
 PROCESSED_MESSAGES = Counter("inference_processed_count", "Number of log entries processed in inference")
 ANOMALY_COUNT = Counter("anomaly_count", "Number of anomalies found")
+
+
 
 class AnomalyDetector():
     """Implements training and inference of Self-Organizing Map to detect anomalies in logs."""
@@ -150,6 +153,7 @@ class AnomalyDetector():
         stdd = meta_data[1]
         mean = meta_data[0]
         threshold = self.config.INFER_ANOMALY_THRESHOLD * stdd + mean
+        # TODO: Track this number `threshold`
 
         ANOMALY_THRESHOLD.set(threshold)
         _LOGGER.info("Log message has to cross score %f to be considered an anomaly."
@@ -165,6 +169,7 @@ class AnomalyDetector():
             # Get data for inference
             data, json_logs = self._load_data(self.config.INFER_TIME_SPAN, self.config.INFER_MAX_ENTRIES)
             if data is None:
+                _LOGGER.info("Data is None")
                 time.sleep(5)
                 continue
 
@@ -183,16 +188,23 @@ class AnomalyDetector():
             dist = self.model.get_anomaly_score(v, self.config.PARALLELISM)
 
             f = []
+            factChecker = AnomalyFactChecker("Inference")
 
             _LOGGER.info("Max anomaly score: %f" % max(dist))
             for i in range(len(data)):
                 _LOGGER.debug("Updating entry %d - dist: %f; mean: %f" % (i, dist[i], mean))
                 s = json_logs[i]    # This needs to be more general, only works for ES incoming logs right now.
                 s['anomaly_score'] = dist[i]
+                # TODO: Check dictionary of values
+                #_LOGGER.info("Printing dictionary: "+ s)
+                aItem = AnomalyFact(s['message'],dist[i], False)
 
+                aItem.attach(factChecker)
+                # aItem.anomaly = True
                 if dist[i] > threshold:
                     ANOMALY_COUNT.inc()
                     s['anomaly'] = 1
+                    aItem.anomaly = True
                     _LOGGER.warn("Anomaly found (score: %f): %s" % (dist[i], s['message']))
                 else:
                     s['anomaly'] = 0
