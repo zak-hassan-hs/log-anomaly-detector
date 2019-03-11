@@ -1,6 +1,7 @@
 """
 """
-
+import uuid
+import requests
 import logging
 from prometheus_client import start_http_server, Gauge, Counter
 
@@ -11,7 +12,7 @@ from .model.som_model import SOMModel
 from .model.sompy_model import SOMPYModel
 from .model.model_exception import ModelLoadException, ModelSaveException
 from .model.w2v_model import W2VModel
-from .observers import AnomalyFact, AnomalyFactChecker
+from .observers import AnomalyFact, AnomalyFactRecorder
 
 import os
 import numpy as np
@@ -31,6 +32,7 @@ TRAINING_TIME = Gauge("training_time", "Time to train for last training")
 INFERENCE_COUNT = Counter("inference_count", "Number of inference runs")
 PROCESSED_MESSAGES = Counter("inference_processed_count", "Number of log entries processed in inference")
 ANOMALY_COUNT = Counter("anomaly_count", "Number of anomalies found")
+
 
 
 
@@ -188,7 +190,7 @@ class AnomalyDetector():
             dist = self.model.get_anomaly_score(v, self.config.PARALLELISM)
 
             f = []
-            factChecker = AnomalyFactChecker("Inference")
+            factChecker = AnomalyFactRecorder("Inference")
 
             _LOGGER.info("Max anomaly score: %f" % max(dist))
             for i in range(len(data)):
@@ -197,14 +199,15 @@ class AnomalyDetector():
                 s['anomaly_score'] = dist[i]
                 # TODO: Check dictionary of values
                 #_LOGGER.info("Printing dictionary: "+ s)
-                aItem = AnomalyFact(s['message'],dist[i], False)
-
-                aItem.attach(factChecker)
                 # aItem.anomaly = True
+                predict_id = uuid.uuid4()
+                s['predict_id'] = predict_id
+                aItem = AnomalyFact(predict_id, s['message'], dist[i], True)
+                aItem.attach(factChecker)
                 if dist[i] > threshold:
                     ANOMALY_COUNT.inc()
                     s['anomaly'] = 1
-                    aItem.anomaly = True
+                    validateAnomaly(aItem)
                     _LOGGER.warn("Anomaly found (score: %f): %s" % (dist[i], s['message']))
                 else:
                     s['anomaly'] = 0
@@ -229,6 +232,16 @@ class AnomalyDetector():
 
         # When we reached # of inference loops, retrain models
         self.recreate_models = True
+
+    def validateAnomaly(self, item):
+
+        r=requests.post(url=self.config.FACT_STORE_URL+"/api/false_anomaly",data=item)
+        print(r.json())
+        # TODO: Make FactStore a borg.
+        # TODO: If the webservice reports this as a false anomaly then we should return 0 so that this
+        #       so that we don't get an alert firing off.
+        return 1
+
 
     def syncModel(self):
         """

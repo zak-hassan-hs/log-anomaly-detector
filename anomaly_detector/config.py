@@ -84,6 +84,8 @@ class Configuration():
     LS_OUTPUT_PATH =""
 
     prefix = "LAD"
+    # FactStore URL for anomaly detection system to interact with fact-store
+    FACT_STORE_URL="http://localhost:5001"
 
     def __init__(self, prefix=None):
         """Initialize configuration."""
