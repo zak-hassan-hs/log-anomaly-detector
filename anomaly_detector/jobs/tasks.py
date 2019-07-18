@@ -68,15 +68,15 @@ class SomInferCommand(AbstractCommand):
             logging.info("%d logs loaded from the last %d seconds", len(data),
                          self.model_adapter.storage_adapter.INFER_TIME_SPAN)
             results = self.model_adapter.predict(data, json_logs, threshold)
-            self.model_adapter.storage_adapter.persist_data(results)
+            # TODO: REMOVE THIS: # self.model_adapter.storage_adapter.persist_data(results)
             # Inference done, increase counter
             infer_loops += 1
             now = time.time()
 
             if self.sleep is True:
-                logging.info("waiting for next minute to start...")
                 logging.info("press ctrl+c to stop process")
                 sleep_time = self.model_adapter.storage_adapter.INFER_TIME_SPAN - (now - then)
+                logging.info("waiting for {} seconds to start...".format(sleep_time))
                 if sleep_time > 0:
                     time.sleep(sleep_time)
 
